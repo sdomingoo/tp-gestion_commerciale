@@ -40,6 +40,9 @@ public class App {
             UserService userService = new UserService();
             CommandeService commandeService = new CommandeService();
 
+            // Nettoyage préalable des tables pour garantir l'idempotence des exécutions successives
+            cleanDatabase();
+
             // -------------------------------------------------------------------------
             // ETAPE 1 : Insertion d'une catégorie via le CrudService / GenericDAO
             // -------------------------------------------------------------------------
@@ -180,4 +183,58 @@ public class App {
             }
         }
     }
+
+    /**
+     * Nettoie les tables de la base de données avant chaque exécution de la démonstration
+     * afin de garantir l'idempotence et d'éviter les violations de contrainte d'unicité (Duplicate entry).
+     */
+    private static void cleanDatabase() {
+        EntityManager em = GenericDAO.getEntityManagerFactory().createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            tx.begin();
+            // Désactivation temporaire des contraintes de clés étrangères (MySQL / MariaDB ou H2)
+            try {
+                em.createNativeQuery("SET FOREIGN_KEY_CHECKS = 0").executeUpdate();
+            } catch (Exception ignored) {
+                try {
+                    em.createNativeQuery("SET REFERENTIAL_INTEGRITY FALSE").executeUpdate();
+                } catch (Exception ignored2) {}
+            }
+
+            try {
+                em.createNativeQuery("TRUNCATE TABLE commande_produit").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE commandes").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE produits").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE categories").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE clients").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE fournisseurs").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE users").executeUpdate();
+            } catch (Exception fallback) {
+                em.createQuery("DELETE FROM CommandeProduit").executeUpdate();
+                em.createQuery("DELETE FROM Commande").executeUpdate();
+                em.createQuery("DELETE FROM Produit").executeUpdate();
+                em.createQuery("DELETE FROM Categorie").executeUpdate();
+                em.createQuery("DELETE FROM Client").executeUpdate();
+                em.createQuery("DELETE FROM Fournisseur").executeUpdate();
+                em.createQuery("DELETE FROM User").executeUpdate();
+            }
+
+            try {
+                em.createNativeQuery("SET FOREIGN_KEY_CHECKS = 1").executeUpdate();
+            } catch (Exception ignored) {
+                try {
+                    em.createNativeQuery("SET REFERENTIAL_INTEGRITY TRUE").executeUpdate();
+                } catch (Exception ignored2) {}
+            }
+            tx.commit();
+        } catch (Exception e) {
+            if (tx != null && tx.isActive()) {
+                tx.rollback();
+            }
+        } finally {
+            em.close();
+        }
+    }
 }
+
